@@ -5,29 +5,46 @@ import Crypto.Cipher.AES as AES
 from datetime import datetime
 import time
 import os
+import random
+
 global meter_id
 global meter_type
+global random_id
+random_id = str(random.randint(100000, 999999))
 
 flag = 0
 os.system('clear')
+
+################################## initial settings#############################
+
+# input Meter ID
 meter_id = input("Meter ID? \r\n>>")
 meter_id.replace(" ", "")
+
+# set both master key and data key as a fixed key
 fixkey = "000000" + meter_id
 defaultkey = "69aF7&3KY0_kk89@"
+
+# select meter type
 meter_type = input("Meter Type? (0:PV / 1:Sub Meter / 2:GateWay)\r\n>>")
 if (meter_type != "1") and (meter_type != "2"):
     meter_type = "0"
+
+# Select address selection
 server_ip = input(
-    "Server IP? ([1]IIL(219) [2]IIL(129) [3]ESI [4]Old [5]Ecolinx)\r\n>>")
+    "Server IP? ([1]IIL(219) [2]Ecolinx)\r\n>>")
+# Select mode simulate as a meter or server for key-Ex
 ex_type = input("[1]as Meter or [2]as Server?\r\n>>")
 if (ex_type != "1"):
     ex_type = "2"
+# Select Full Key-Ex (initial key-ex and disconnect key-ex) or Disconnect key-ex
 cmd = input("[1]Full KeyEx [2]Disconnect KeyEx?\r\n>>")
 if (cmd == "1") & (ex_type == "1"):
     dkey = fixkey.encode('utf-8')
     mkey = fixkey.encode('utf-8')
     defaultkey = defaultkey.encode('utf-8')
 else:
+    # input master key and data key, use fixkey if not enter
     dkey = input("Data Key? (press Enter to use fixkey)\r\n>>")
     dkey.replace(" ", "")
     if dkey == "":
@@ -40,29 +57,27 @@ else:
         mkey = mkey.encode('utf-8')
         defaultkey = defaultkey.encode('utf-8')
 
+# setting topics
 c2s_topic = meter_id + "C2S"
 s2c_topic = meter_id + "S2C"
-if server_ip == "3":
-    server_ip = "52.156.56.170"
+# setting mqtt broker ip
+if server_ip == "2":
+    server_ip = "a1mzcqrjr84wze-ats.iot.ap-northeast-1.amazonaws.com"
 else:
-    if server_ip == "2":
-        server_ip = "34.84.143.129"
-    else:
-        if server_ip == "5":
-            server_ip = "a1mzcqrjr84wze-ats.iot.ap-northeast-1.amazonaws.com"
-        else:
-            server_ip = "34.96.156.219"
-
+    server_ip = "34.96.156.219"
+# setting certs location
 cacert = './certs/AmazonRootCA1.pem'
 clientCert = './certs/certificate.pem.crt'
 clientKey = './certs/private.pem.key'
 
+# conversion for the keys value
 hexdefaultkey = bytes.fromhex(defaultkey.hex())
 hexdkey = bytes.fromhex(dkey.hex())
 hexmkey = bytes.fromhex(mkey.hex())
 iv = "420#abA%,ZfE79@M".encode('utf-8')
 hexiv = bytes.fromhex(iv.hex())
 
+# define message type according the meter type
 meter = []
 if (meter_type == '0'):
     meter = ["ca", "c04a"]
@@ -71,7 +86,7 @@ if (meter_type == '1'):
 if (meter_type == '2'):
     meter = ["6a", "604a"]
 
-###############################################################################
+################################ Server Mode#################################
 if (ex_type == "2"):  # as Server
     def on_connect(client, userdata, flags, rc):
         print("C2S Connected with result code "+str(rc))
@@ -82,6 +97,7 @@ if (ex_type == "2"):  # as Server
         global cmd
         global meter_id
         global meter_type
+        global random_id
 
         if (cmd == "2"):  # Disconnect Key-Ex
             command = ""
@@ -107,7 +123,7 @@ if (ex_type == "2"):  # as Server
                     meter_id = meter_id.replace("M", "4D")
                     command = meter[1] + \
                         meter_id.strip("J?") + "00" + dkey.hex()
-                print("C2S: Response data key")
+                print("S2C: Response data key")
                 key = hexmkey
                 flag = + 1
             else:
@@ -133,15 +149,14 @@ if (ex_type == "2"):  # as Server
                 payload = bytes.fromhex(command)
                 decipher = AES.new(key, mode=AES.MODE_CBC, iv=hexiv)
                 enc = decipher.encrypt(payload)
-                client1 = mqtt.Client(meter_id[4:10]+"r")
-
-                # client1.tls_set(cacert,
-                #                 certfile=clientCert,
-                #                 keyfile=clientKey,
-                #                 tls_version=ssl.PROTOCOL_TLSv1_2)
-                # client1.tls_insecure_set(True)
-
-                client1.connect(server_ip, 1883, 600)
+                client1 = mqtt.Client(random_id+"a")
+                client1.tls_set(cacert,
+                                certfile=clientCert,
+                                keyfile=clientKey,
+                                tls_version=ssl.PROTOCOL_TLSv1_2)
+                client1.tls_insecure_set(True)
+                client1.connect(server_ip, 8883, 600)
+                time.sleep(2)
                 client1.publish(s2c_topic, enc)
 
         if (cmd == "1"):  # Full Key-Ex
@@ -165,7 +180,7 @@ if (ex_type == "2"):  # as Server
                     meter_id = meter_id.replace("M", "4D")
                     command = meter[1] + \
                         meter_id.strip("J?") + "0120" + mkey.hex() + dkey.hex()
-                print("C2S: Registration data")
+                print("S2C: Registration data")
             else:
                 if (dec[0:1].hex() == meter[0]) & ((dec[8:9].hex() == "02")):
                     print("C2S: success ACK")
@@ -180,32 +195,29 @@ if (ex_type == "2"):  # as Server
                 payload = bytes.fromhex(command)
                 decipher = AES.new(key, mode=AES.MODE_CBC, iv=hexiv)
                 enc = decipher.encrypt(payload)
-                client1 = mqtt.Client(meter_id[4:10]+"r")
-
-                # client1.tls_set(cacert,
-                #                 certfile=clientCert,
-                #                 keyfile=clientKey,
-                #                 tls_version=ssl.PROTOCOL_TLSv1_2)
-                # client1.tls_insecure_set(True)
-
-                client1.connect(server_ip, 1883, 600)
+                client1 = mqtt.Client(random_id+"b")
+                client1.tls_set(cacert,
+                                certfile=clientCert,
+                                keyfile=clientKey,
+                                tls_version=ssl.PROTOCOL_TLSv1_2)
+                client1.tls_insecure_set(True)
+                client1.connect(server_ip, 8883, 600)
+                time.sleep(2)
                 client1.publish(s2c_topic, enc)
-    client = mqtt.Client(meter_id[4:10]+"s")
+    client = mqtt.Client(random_id+"s")
     client.on_connect = on_connect
     client.on_message = on_message
-
-    # client.tls_set(cacert,
-    #                certfile=clientCert,
-    #                keyfile=clientKey,
-    #                tls_version=ssl.PROTOCOL_TLSv1_2)
-    # client.tls_insecure_set(True)
-
-    client.connect(server_ip, 1883, 600)
+    client.tls_set(cacert,
+                   certfile=clientCert,
+                   keyfile=clientKey,
+                   tls_version=ssl.PROTOCOL_TLSv1_2)
+    client.tls_insecure_set(True)
+    client.connect(server_ip, 8883, 600)
     client.loop_start()
     while True:
         time.sleep(1)   # 1秒待つ
 
-###############################################################################
+############################### Meter mode#####################################
 if (ex_type == "1"):  # as Meter
     key_done = False
 
@@ -220,6 +232,7 @@ if (ex_type == "1"):  # as Meter
         global flag
         global meter_id
         global meter_type
+        global random_id
 
         if (cmd == "2"):  # Disconnect Key-Ex
             global key_done
@@ -280,10 +293,10 @@ if (ex_type == "1"):  # as Meter
                 print("S2C: Registration data")
                 print(dec.hex())
                 print("\r")
-                dkey = bytes.fromhex(dec[9:25].hex()).decode("ASCII")
+                dkey = bytes.fromhex(dec[25:41].hex()).decode("ASCII")
                 dkey = dkey.encode('utf-8')
                 hexdkey = bytes.fromhex(dkey.hex())
-                mkey = bytes.fromhex(dec[25:41].hex()).decode("ASCII")
+                mkey = bytes.fromhex(dec[9:25].hex()).decode("ASCII")
                 mkey = mkey.encode('utf-8')
                 hexmkey = bytes.fromhex(mkey.hex())
                 if (meter_type != '2'):
@@ -307,30 +320,27 @@ if (ex_type == "1"):  # as Meter
             payload = bytes.fromhex(command)
             decipher = AES.new(key, mode=AES.MODE_CBC, iv=hexiv)
             enc = decipher.encrypt(payload)
-
-            # client1.tls_set(cacert,
-            #                 certfile=clientCert,
-            #                 keyfile=clientKey,
-            #                 tls_version=ssl.PROTOCOL_TLSv1_2)
-            # client1.tls_insecure_set(True)
-
-            client1 = mqtt.Client(meter_id[4:10]+"r")
-            client1.connect(server_ip, 1883, 600)
+            client1 = mqtt.Client(random_id+"c")
+            client1.tls_set(cacert,
+                            certfile=clientCert,
+                            keyfile=clientKey,
+                            tls_version=ssl.PROTOCOL_TLSv1_2)
+            client1.tls_insecure_set(True)
+            client1.connect(server_ip, 8883, 600)
+            time.sleep(2)
             client1.publish(c2s_topic, enc)
         else:
             return
 
-    client = mqtt.Client(meter_id[4:10]+"s")
-
-    # client.tls_set(cacert,
-    #                certfile=clientCert,
-    #                keyfile=clientKey,
-    #                tls_version=ssl.PROTOCOL_TLSv1_2)
-    # client.tls_insecure_set(True)
-
+    client = mqtt.Client(random_id+"s")
+    client.tls_set(cacert,
+                   certfile=clientCert,
+                   keyfile=clientKey,
+                   tls_version=ssl.PROTOCOL_TLSv1_2)
+    client.tls_insecure_set(True)
     client.on_connect = on_connect
     client.on_message = on_message
-    client.connect(server_ip, 1883, 600)
+    client.connect(server_ip, 8883, 600)
     client.loop_start()
 
     while (not key_done):
@@ -360,14 +370,13 @@ if (ex_type == "1"):  # as Meter
         payload = bytes.fromhex(command)
         decipher = AES.new(key, mode=AES.MODE_CBC, iv=hexiv)
         enc = decipher.encrypt(payload)
-        client1 = mqtt.Client(meter_id[4:10]+"r")
-
-        # client1.tls_set(cacert,
-        #                 certfile=clientCert,
-        #                 keyfile=clientKey,
-        #                 tls_version=ssl.PROTOCOL_TLSv1_2)
-        # client1.tls_insecure_set(True)
-
-        client1.connect(server_ip, 1883, 600)
+        client1 = mqtt.Client(random_id+"d")
+        client1.tls_set(cacert,
+                        certfile=clientCert,
+                        keyfile=clientKey,
+                        tls_version=ssl.PROTOCOL_TLSv1_2)
+        client1.tls_insecure_set(True)
+        client1.connect(server_ip, 8883, 600)
+        time.sleep(2)
         client1.publish(c2s_topic, enc)
         time.sleep(15)   # 15秒待つ
