@@ -21,27 +21,27 @@ else:
     key = key.encode('utf-8')
     mkey = input("Master Key?\r\n>>")
     mkey = mkey.encode('utf-8')
-server_ip = input(
-    "Server IP? ([1]IIL(219) [2]IIL(129) [3]ESI [4]Old [5]Ecolinx)\r\n>>")
-if server_ip == "3":
+server_ip = ""
+server_choice = input(
+    "Server IP? ([1]IIL(219) [2]IIL(129) [3]ESI [4]Old [5]AWS)\r\n>>")
+if server_choice == "3":
     server_ip = "52.156.56.170"
 else:
-    if server_ip == "2":
+    if server_choice == "2":
         server_ip = "34.84.143.129"
     else:
-        if server_ip == "4":
+        if server_choice == "4":
             server_ip = "34.92.152.78"
         else:
-            if server_ip == "5":
-                server_ip = "a1mzcqrjr84wze-ats.iot.ap-northeast-1.amazonaws.com"
+            if server_choice == "5":
+                server_ip = "a2ki8rxnhuwcg3-ats.iot.ap-east-1.amazonaws.com"
+                cacert = './certs/AWS/cacert.pem'
+                clientCert = './certs/AWS/clientcert.pem'
+                clientKey = './certs/AWS/clientkey.pem'
             else:
                 server_ip = "34.96.156.219"
 
 path = str.encode(meter_id + "log.txt")
-
-# cacert = './certs/AmazonRootCA1.pem'
-# clientCert = './certs/certificate.pem.crt'
-# clientKey = './certs/private.pem.key'
 
 # 鍵値
 # key = "000000J200000406".encode('utf-8')
@@ -137,14 +137,16 @@ def on_message(client, userdata, msg):
         with open(path, 'a', encoding='utf-8') as f:
             f.write(current_time + " C2S: " + dec.hex() + "\r\n")
             f.close()
-        print('Message...:', dec.hex())
+        print('\nReceived time: ' + current_time)
+        # print('Message...:', dec.hex())
     else:
-        print('Keep Alive')
         now = datetime.now()
         current_time = now.strftime("%Y/%m/%d %H:%M:%S")
         with open(path, 'a', encoding='utf-8') as f:
             f.write(current_time + " C2S: " + msg.payload.hex() + "\r\n")
             f.close()
+        print('\nReceived time: ' + current_time)
+        print('Keep Alive')
         return
     if (dec[2:3].hex() != "4a") & (dec[0:1].hex() != "7b"):
         print('C2S: ', dec.hex())
@@ -371,17 +373,18 @@ def on_message(client, userdata, msg):
 client = mqtt.Client(meter_id[4:10]+"z")
 client1 = mqtt.Client(meter_id[4:10]+"y")
 
-# client.tls_set(cacert,
-#                certfile=clientCert,
-#                keyfile=clientKey,
-#                tls_version=ssl.PROTOCOL_TLSv1_2)
-# client.tls_insecure_set(True)
+if server_choice == "5":
+    client.tls_set(cacert,
+                   certfile=clientCert,
+                   keyfile=clientKey,
+                   tls_version=ssl.PROTOCOL_TLSv1_2)
+    client.tls_insecure_set(True)
 
-# client1.tls_set(cacert,
-#                 certfile=clientCert,
-#                 keyfile=clientKey,
-#                 tls_version=ssl.PROTOCOL_TLSv1_2)
-# client1.tls_insecure_set(True)
+    client1.tls_set(cacert,
+                    certfile=clientCert,
+                    keyfile=clientKey,
+                    tls_version=ssl.PROTOCOL_TLSv1_2)
+    client1.tls_insecure_set(True)
 
 # 設定連線的動作
 client.on_connect = on_connect
@@ -392,8 +395,12 @@ client1.on_message = on_message1
 # 設定登入帳號密碼
 # client.username_pw_set("try","xxxx")
 # 設定連線資訊(IP, Port, 連線時間)
-client.connect(server_ip, 1883, 600)
-client1.connect(server_ip, 1883, 600)
+if server_choice == "5":
+    client.connect(server_ip, 8883, 600)
+    client1.connect(server_ip, 8883, 600)
+else:
+    client.connect(server_ip, 1883, 600)
+    client1.connect(server_ip, 1883, 600)
 # 開始連線，執行設定的動作和處理重新連線問題
 # 也可以手動使用其他loop函式來進行連接
 client.loop_start()

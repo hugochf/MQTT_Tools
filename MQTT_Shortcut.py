@@ -2,7 +2,6 @@ import paho.mqtt.client as mqtt
 import Crypto.Cipher.AES as AES
 import time
 import os
-14
 
 os.system('clear')
 meter_id = input("Meter ID? \r\n>>")
@@ -32,7 +31,6 @@ else:
             server_ip = "34.92.152.78"
         else:
             server_ip = "34.96.156.219"
-            print(server_ip)
 
 # 鍵値
 # key = "000000J200000406".encode('utf-8')
